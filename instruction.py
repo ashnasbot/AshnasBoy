@@ -272,6 +272,22 @@ def cpl(c, _):
     c.r.fN = True
     c.r.fH = True
 
+def add_sp(c, n):
+    t = c.r.SP + as_signed(n)
+    c.r.fH = (((c.r.SP & 0xF) + (n & 0xF)) > 0xF)
+    c.r.fC = (((c.r.SP & 0xFF) + (n & 0xFF)) > 0xFF)
+    c.r.fN = False
+    c.r.fZ = False
+    t &= 0xFFFF
+    c.r.SP = t
+
+def ld_hl_SP_plus(c, n):
+    c.r.fH = (((c.r.SP & 0xF) + (n & 0xF)) > 0xF)
+    c.r.fC = (((c.r.SP & 0xFF) + (n & 0xFF)) > 0xFF)
+    c.r.fN = False
+    c.r.fZ = False
+    c.r.HL = (c.r.SP + as_signed(n)) & 0xFFFF
+
 
 class Instruction(enum.Enum):
 
@@ -361,7 +377,7 @@ class Instruction(enum.Enum):
     JR_C_n      = 56, 1, 8, lambda c, n: setattr(c.r, "PC", c.r.PC + as_signed(n)) if c.r.fC else 1          # 38
     ADD_HL_SP   = 57, 0, 8, lambda c, _: setattr(c.r, "HL", add16(c.r, c.r.HL, c.r.SP))                      # 39
     LD_A_HLd    = 58, 0, 8,  lambda c, _: [setattr(c.r, "A", c.m[c.r.HL]), setattr(c.r, "HL", c.r.HL-1)]     # 3A
-    DEC_SP      = 59, 0, 8, lambda c, _: setattr(c.r, 'SP', (c.r.SP - 1) & 0xFF)                             # 3B
+    DEC_SP      = 59, 0, 8, lambda c, _: setattr(c.r, 'SP', (c.r.SP - 1) & 0xFFFF)                           # 3B
     INC_A       = 60, 0, 4,  lambda c, _: setattr(c.r, 'A', inc(c.r, c.r.A))                                 # 3c
     DEC_A       = 61, 0, 4, lambda c, _: setattr(c.r, 'A', dec(c.r, c.r.A))                                  # 3D
     LD_A_n      = 62, 1, 8,  lambda c, n: setattr(c.r, "A", n)                                               # 3E
@@ -534,20 +550,20 @@ class Instruction(enum.Enum):
     PUSH_HL     = 229, 0, 16, lambda c, _: push_word(c, c.r.HL)                                              # E5
     AND_n       = 230, 1, 8,  lambda c, n: andA(c.r, n)                                                      # E6
     RST_20H     = 231, 0, 32, lambda c, _: call(c, 0x20)                                                     # E7
-    ADD_SP_n    = 232, 1, 16, lambda c, n: setattr(c.r, "SP", (c.r.SP + as_signed(n)) & 0xFF)                # E8
+    ADD_SP_n    = 232, 1, 16, add_sp                                                                         # E8
     JP_vHL      = 233, 0, 4,  lambda c, _: setattr(c.r, "PC", c.r.HL)                                        # E9
     LD_nn_A     = 234, 2, 16, lambda c, nn: setitem(c.m, nn, c.r.A)                                          # EA
     XOR_A_n     = 238, 1, 8,  lambda c, n: xorA(c.r, n)                                                      # EE
     RST_28H     = 239, 0, 32, lambda c, _: call(c, 0x28)                                                     # EF
-    LD_A_vffn   = 240, 1, 12,  lambda c, n: setattr(c.r, "A", c.m[0xFF00 + n])                               # F0
+    LD_A_vffn   = 240, 1, 12,  lambda c, n: setattr(c.r, "A", c.m[(0xFF00 + n) & 0xFFFF])                    # F0
     POP_AF      = 241, 0, 12,  lambda c, _: setattr(c.r, "AF", pop_word(c))                                  # F1
     LD_A_vffC   = 242, 0, 8,  lambda c, _: setattr(c.r, "A", c.m[0xFF00 + c.r.C])                            # F2
-    DI          = 243, 0, 4,  di                                                                             # f3
+    DI          = 243, 0, 4,  di                                                                             # F3
    # F4
     PUSH_AF     = 245, 0, 16, lambda c, _: push_word(c, c.r.AF)                                              # F5
     OR_n        = 246, 1, 8,  lambda c, n: orA(c.r, n)                                                       # F6
     RST_30H     = 247, 0, 32, lambda c, _: call(c, 0x30)                                                     # F7
-    LDHL_SP_n   = 248, 1, 12, lambda c, n: addn(c.r, 'HL', c.r.SP + as_signed(n))                            # F8
+    LDHL_SP_n   = 248, 1, 12, ld_hl_SP_plus                                                                  # F8
     LD_SP_HL    = 249, 0, 8, lambda c, _: setattr(c.r, 'SP', c.r.HL)                                         # F9
     LD_A_vnn    = 250, 2, 16,  lambda c, nn: setattr(c.r, "A", c.m[nn])                                      # FA
     EI          = 251, 0, 4,  ei                                                                             # FB

@@ -1,5 +1,3 @@
-import cProfile
-from datetime import datetime
 import time
 
 import pyglet # TODO: reclass exceptions
@@ -24,15 +22,6 @@ if __name__ == "__main__":
     ppu = PPU(interface, mem)
     cpu = CPU(mem, ppu)
 
-    cpu.boot()
+    cpu.boot("poke.gb")
 
-    start = datetime.now()
-    #cProfile.run('cpu.run()', 'restats')
     cpu.run()
-    #import pstats
-    #p = pstats.Stats('restats')
-    #p.sort_stats("cumulative").print_stats(25)
-    end = datetime.now()
-    print(cpu.frames)
-    duration = end - start
-    print(f"{cpu.frames / duration.seconds:02} fps")

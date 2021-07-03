@@ -42,7 +42,6 @@ class Interface(pyglet.window.Window):
         glBindTexture(GL_TEXTURE_2D, 0)
 
     def on_draw(self):
-        glClear(GL_COLOR_BUFFER_BIT)
         glBindTexture(GL_TEXTURE_2D, self.tex)
         glEnable(GL_TEXTURE_2D)
         glBegin(GL_QUADS)

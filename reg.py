@@ -1,4 +1,5 @@
 class Reg():
+    # TODO: move into cpu
 
     def __init__(self):
         self.A = 1
@@ -87,29 +88,54 @@ class Reg():
 
 class LCDC:
     def __init__(self):
-        self._value = 0x00
-        self.lcd_enable           = False
-        self.windowmap_select     = False
-        self.window_enable        = False
-        self.tiledata_select      = False
-        self.backgroundmap_select = False
-        self.sprite_height        = False
-        self.sprite_enable        = False
-        self.background_enable    = False
+        self._byte = 0xF0
+        self.screen_on          = True
+        self.windowmap_select   = False
+        self.window_enable      = False
+        self.tile_data_select   = False
+        self.bg_tile_map_select = False
+        self.sprite_height      = False
+        self.sprite_enable      = False
+        self.bg_enable          = False
 
     @property
     def value(self):
-        return self._value
+        return self._byte
 
     @value.setter    
-    def value(self, value):
-        self._value = value
+    def value(self, val):
+        self._byte = val
 
-        self.lcd_enable           = value & (1 << 7)
-        self.windowmap_select     = value & (1 << 6)
-        self.window_enable        = value & (1 << 5)
-        self.tiledata_select      = value & (1 << 4)
-        self.backgroundmap_select = value & (1 << 3)
-        self.sprite_height        = value & (1 << 2)
-        self.sprite_enable        = value & (1 << 1)
-        self.background_enable    = value & (1 << 0)
+        self.screen_on          = val & 0b10000000  # 7
+        self.windowmap_select   = val & 0b01000000  # 6
+        self.window_enable      = val & 0b00100000  # 5
+        self.tile_data_select   = val & 0b00010000  # 4
+        self.bg_tile_map_select = val & 0b00001000  # 3
+        self.sprite_height      = val & 0b00000100  # 2
+        self.sprite_enable      = val & 0b00000010  # 1
+        self.bg_enable          = val & 0b00000001  # 0
+
+class STAT:
+    def __init__(self):
+        self._byte = 0x00
+        self.lyc_eq_ly_enabled    = False
+        self.mode_2_OAM_enable    = False
+        self.mode_1_vblank_enable = False
+        self.mode_0_hblank_enable = False
+        self.lyc_eq_ly            = False
+        self.mode                 = 0
+
+    @property
+    def value(self):
+        return self._byte
+
+    @value.setter    
+    def value(self, val):
+        self._byte = val & 0b01111111
+
+        self.lyc_eq_ly_enabled    = val & 0b01000000  # 6
+        self.mode_2_OAM_enable    = val & 0b00100000  # 5
+        self.mode_1_vblank_enable = val & 0b00010000  # 4
+        self.mode_0_hblank_enable = val & 0b00001000  # 3
+        self.lyc_eq_ly            = val & 0b00000100  # 2
+        self.mode                 = val & 0b00000011  # 0-1
