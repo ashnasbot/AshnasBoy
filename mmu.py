@@ -20,7 +20,7 @@ class MBC_MODE(Enum):
 class MBC_TYPE(Enum):
     # need better sorting of type functionality
     NONE = 0x00
-    MBC1 = 0x05
+    MBC1 = 0x01
     # 00h  ROM ONLY                 19h  MBC5
     # 01h  MBC1                     1Ah  MBC5+RAM
     # 02h  MBC1+RAM                 1Bh  MBC5+RAM+BATTERY

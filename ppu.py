@@ -1,9 +1,10 @@
-import functools
 from array import array
+import functools
+from time import time
 
 import pyglet
 
-from reg import LCDC
+from reg import LCDC, STAT
 
 ROWS, COLS = 144, 160
 TILES = 384
@@ -106,24 +107,45 @@ class PPU():
         wx = self.io[0x4B] - 7     # WX
         wy = self.io[0x4A]         # WY
 
-        bg_off = 0x1800 if self._LCDC.backgroundmap_select == 0 else 0x1C00
+        bg_off = 0x1800 if self._LCDC.bg_tile_map_select == 0 else 0x1C00
+        win_off = 0x1800 if self._LCDC.windowmap_select == 0 else 0x1C00
 
         # Used for the half tile at the left side when scrolling
         offset = scx & 0b111
 
+        # Weird behavior, where the window has it's own internal line counter. It's only incremented whenever the
+        # window is drawing something on the screen.
+        if self._LCDC.window_enable and wy <= y and wx < 160:
+            self.ly_window += 1
+
         for x in range(160):
             pos = (22880 - (y*160)) + x
-            if self._LCDC.background_enable:
+            if self._LCDC.window_enable and wy <= y and wx <= x:
+                wt = self.vram[win_off + (self.ly_window) // 8 * 32 % 0x400 + (x-wx) // 8 % 32]
+                # If using signed tile indices, modify index
+                if not self._LCDC.tile_data_select:
+                    # (x ^ 0x80 - 128) to convert to signed, then
+                    # add 256 for offset (reduces to + 128)
+                    wt = (wt ^ 0x80) + 128
+                self._screenbuffer[pos] = self._tiles[(8*(8*wt + (self.ly_window) % 8)) + (x-wx) % 8]
+            elif self._LCDC.bg_enable:
                 bt = self.vram[bg_off + (y+scy) // 8 * 32 % 0x400 + (x+scx) // 8 % 32]
                 # If using signed tile indices, modify index
-                if not self._LCDC.tiledata_select:
+                if not self._LCDC.tile_data_select:
                     # (x ^ 0x80 - 128) to convert to signed, then
                     # add 256 for offset (reduces to + 128)
                     bt = (bt ^ 0x80) + 128
-                #self._screenbuffer_raw[pos] = self._tilecache[8*bt + y % 8][x % 8]
-                self._screenbuffer_raw[pos] = self._tilecache_raw[(8*(8*bt + (y+scy) % 8)) + (x+offset) % 8]
+                #self._screenbuffer[pos] = self._tilecache[8*bt + y % 8][x % 8]
+                self._screenbuffer[pos] = self._tiles[(8*(8*bt + (y+scy) % 8)) + (x+offset) % 8]
             else:
-                self._screenbuffer_raw[pos] = self.color_palette[0]
+                self._screenbuffer[pos] = self.color_palette[0]
+
+        if y == 143:
+            # Reset at the end of a frame. We set it to -1, so it will be 0 after the first increment
+            self.ly_window = -1
+
+    def clear_framebuffer(self):
+        self._screenbuffer[:] = [self.color_palette[0] for _ in range(160*144)]
 
     def frame(self):
         # TODO: separate out - is this something for mmu?
