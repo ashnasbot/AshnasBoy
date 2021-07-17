@@ -2,12 +2,15 @@ import time
 
 import pyglet # TODO: reclass exceptions
 
+from mbc import MBC
 from cpu import CPU
 from interface import Interface
 from mmu import MMU
 from ppu import PPU
 
-if __name__ == "__main__":
+print("name", __name__)
+
+def gb() -> None:
     for i in range(50):
         try:
             interface = Interface(320, 288, vsync=False)
@@ -18,10 +21,19 @@ if __name__ == "__main__":
         raise Exception("Failed to create window")
     print("Window OK")
 
-    mem = MMU(interface)
+    crt = MBC("pokeGold.gbc")
+    mem = MMU(interface, crt)
     ppu = PPU(interface, mem)
     cpu = CPU(mem, ppu)
 
-    cpu.boot("poke.gb")
+    crt.load_rom(boot=True)
+    cpu.boot()
+    interface.set_caption("AshnasGB - " + crt.get_rom_name())
 
-    cpu.run()
+
+    pyglet.clock.schedule_interval(cpu.advance_frame, 1/59.7)
+    #pyglet.clock.schedule_interval(interface.do_drawing, 1/60)
+    pyglet.clock.schedule_interval(interface.update_fps, 1)
+    pyglet.app.run()
+
+gb()

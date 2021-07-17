@@ -1,21 +1,25 @@
-import functools
+from __future__ import annotations
 from operator import setitem
-
-import enum
+from enum import Enum
 import re
+from typing import Callable, Type
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from cpu import CPU
+    from reg import Reg
 
 
-@functools.lru_cache(maxsize=None)
-def as_signed(n):
+def as_signed(n: int) -> int:
     return n - 256 if n > 127 else n
 
-def cp (r, b):
+def cp (r: Reg, b: int) -> None:
     r.fZ = r.A == b
     r.fH = (r.A & 0xF) < (b & 0xF)
     r.fN = True
     r.fC = r.A < b
 
-def addA(r, b):
+def addA(r: Reg, b: int) -> None:
     n = r.A + b
     r.fH = ((r.A & 0x0F) + (b & 0x0F)) & 0x10 == 0x10
     r.fC = n > 0xFF
@@ -23,21 +27,21 @@ def addA(r, b):
     r.A = n & 0xFF
     r.fZ = r.A == 0
 
-def add16(r, a, b):
+def add16(r: Reg, a:int, b:int) -> int:
     n = a + b
     r.fN = False
     r.fC = n > 0xFFFF
     r.fH = ((a & 0x0FFF) + (b & 0x0FFF)) > 0x0FFF
     return n & 0xFFFF
 
-def subA(r, b):
+def subA(r: Reg, b:int) -> None:
     r.fZ = r.A == b
     r.fH = (r.A & 0xF) < (b & 0xF)
     r.fN = True
     r.fC = r.A < b
     r.A = (r.A - b) & 0xFF
 
-def addn(r, n, b):
+def addn(r: Reg, n:str, b:int) -> None:
     val = getattr(r, n)
     r.fH = ((val & 0x0F) + (b & 0x0F)) & 0x10 == 0x10
     val += b
@@ -46,7 +50,7 @@ def addn(r, n, b):
     r.fC = val > 0xFF
     setattr(r,n, val & 0xFF)
 
-def ADC(r, b):
+def ADC(r: Reg, b: int) -> None:
     n = r.A + b
     if r.fC:
        n += 1
@@ -56,7 +60,7 @@ def ADC(r, b):
     r.fN = False
     r.A = n & 0xFF
 
-def SBC(r, b):
+def SBC(r:Reg, b:int) -> None:
     c = r.fC
     f_res = r.A - b - c
     res = f_res & 0xFF
@@ -68,39 +72,39 @@ def SBC(r, b):
 
     r.A = res & 0xFF
 
-def andA(r, b):
+def andA(r:Reg, b:int) -> None:
     r.A &= b
     r.fZ = r.A == 0
     r.fN = False
     r.fH = True
     r.fC = False
 
-def xorA(r, b):
+def xorA(r:Reg, b:int) -> None:
 	r.A ^= b
 	r.fZ = r.A == 0
 	r.fH = False
 	r.fN = False
 	r.fC = False
 
-def orA(r, b):
+def orA(r:Reg, b:int) -> None:
 	r.A |= b
 	r.fZ = r.A == 0
 	r.fH = False
 	r.fN = False
 	r.fC = False
 
-def nop(*args):
+def nop(c:CPU, _:int) -> None:
     pass
 
-def inc(flags, b):
-    flags.fH = (b & 0xF) == 0xF
+def inc(r:Reg, b:int) -> int:
+    r.fH = (b & 0xF) == 0xF
     b += 1
     b &= 0xFF
-    flags.fZ = b == 0
-    flags.fN = False
+    r.fZ = b == 0
+    r.fN = False
     return b
 
-def dec(r, b):
+def dec(r:Reg, b:int) -> int:
     b -= 1
     b &= 0xFF
     r.fZ = b == 0
@@ -108,36 +112,36 @@ def dec(r, b):
     r.fH = (b & 0xF) == 0xF
     return b
 
-def swap(r, val):
+def swap(r:Reg, val:int) -> int:
     r.fZ = val == 0
     r.fN = False
     r.fH = False
     r.fC = False
     return ((val << 4) & 0xFF) | (val >> 4)
 
-def ccf(c, _):
+def ccf(c:CPU, _:int) -> None:
     c.r.fC = not c.r.fC
     c.r.fH = False
     c.r.fN = False
 
-def scf(c, _):
+def scf(c:CPU, _:int) -> None:
     c.r.fC = True
     c.r.fH = False
     c.r.fN = False
 
-def halt(c, _):
+def halt(c:CPU, _:int) -> None:
     c.r.HALT = True
 
-def stop(c, _):
+def stop(c:CPU, _:int) -> None:
     c.r.STOP = True
 
-def di(c, _):
+def di(c:CPU, _:int) -> None:
     c.r.IME = False
 
-def ei(c, _):
+def ei(c:CPU, _:int) -> None:
     c.r.IME = True
 
-def rlca(c, _):
+def rlca(c:CPU, _:int) -> None:
     r = c.r
     t = (r.A << 1) + (r.A >> 7)
     r.fC = t > 0xFF
@@ -146,7 +150,7 @@ def rlca(c, _):
     r.fZ = False
     r.A = t & 0xFF
 
-def rlc(r, n):
+def rlc(r:Reg, n:int) -> int:
     t = (n << 1) + (n >> 7)
     r.fZ = (t & 0xFF) == 0
     r.fC = t > 0xFF
@@ -154,7 +158,7 @@ def rlc(r, n):
     r.fN = False
     return t & 0xFF
 
-def rrc(r, n):
+def rrc(r:Reg, n:int) -> int:
 	r.fC = (n & 0x1) == 0x1
 	r.fH = False
 	r.fN = False
@@ -164,7 +168,7 @@ def rrc(r, n):
 	r.fZ = n == 0
 	return n
 
-def rl(r, n):
+def rl(r:Reg, n:int) -> int:
     t = (n << 1) + r.fC
     r.fH = False
     r.fN = False
@@ -172,7 +176,7 @@ def rl(r, n):
     r.fC = t > 0xFF
     return t & 0xFF
 
-def rr(r, n):
+def rr(r:Reg, n:int) -> int:
     oldc = r.fC
     r.fC = n & 0x1 == 0x1
     r.fH = False
@@ -183,7 +187,7 @@ def rr(r, n):
     r.fZ = n == 0
     return n
 
-def osla(r, n):
+def osla(r:Reg, n:int) -> int:
     r.fC = (n & (1 << 7)) != 0
     n <<= 1
     n %= 0xFF
@@ -192,7 +196,7 @@ def osla(r, n):
     r.fN = False
     return n
 
-def sla(r, n):
+def sla(r:Reg, n:int) -> int:
     t = (n << 1)
     r.fZ = (t & 0xFF) == 0
     r.fC = t > 0xFF
@@ -200,7 +204,7 @@ def sla(r, n):
     r.fN = False
     return t & 0xFF
 
-def sra(r, n):
+def sra(r:Reg, n:int) -> int:
     t = ((n >> 1) | (n & 0x80)) + ((n & 1) << 8)
     r.fZ = (t & 0xFF) == 0
     r.fC = t > 0xFF
@@ -208,7 +212,7 @@ def sra(r, n):
     r.fN = False
     return t & 0xFF
 
-def srl(r, n):
+def srl(r:Reg, n:int) -> int:
     r.fC = (n & 0x1) != 0
     n >>= 1
     r.fZ = n == 0
@@ -216,40 +220,38 @@ def srl(r, n):
     r.fN = False
     return n
 
-def bit(r, val, b):
-    t = val & (1 << b)
+def bit(r:Reg, n:int, b:int) -> int:
+    t = n & (1 << b)
     r.fH = True
     r.fZ = (t & 0xFF) == 0
     r.fN = False
     return t & 0xFF
 
-def push_word(c, val):
+def push_word(c:CPU, n:int) -> None:
     c.r.SP -= 1
-    h, l = val.to_bytes(2, byteorder="little")
-    c.m[c.r.SP] = l
+    c.m[c.r.SP] = n >> 8
     c.r.SP -= 1
-    c.m[c.r.SP] = h
+    c.m[c.r.SP] = n & 0xFF
 
-def pop_word(c):
+def pop_word(c:CPU) -> int:
     l = c.m[c.r.SP]
     c.r.SP += 1
     h = c.m[c.r.SP]
     c.r.SP += 1
     return (h << 8) + l
 
-def call(c, nn):
+def call(c:CPU, nn:int) -> None:
     push_word(c, c.r.PC)
     c.r.PC = nn
 
-def ret(c, _):
+def ret(c:CPU, _:int) -> None:
     c.r.PC = pop_word(c)
 
-def daa(r):
-    # note: assumes a is a uint8_t and wraps from 0xff to 0
-    if not r.fN:   # after an addition, adjust if (half-)carry occurred or if result is out of bounds
+def daa(r:Reg) -> None:
+    if not r.fN:
         if (r.fC or r.A > 0x99):
             r.A = (r.A  + 0x60) & 0xFF
-            r.fC = 1
+            r.fC = True
         if r.fH or (r.A & 0x0F) > 0x09:
             r.A = (r.A + 0x6) & 0xFF
     else:  # after a subtraction, only adjust if (half-)carry occurred
@@ -259,20 +261,20 @@ def daa(r):
             r.A = (r.A - 0x6) & 0xFF
     # these flags are always updated
     r.fZ = r.A == 0 # the usual z flag
-    r.fH = 0 # h flag is always cleared
+    r.fH = False # h flag is always cleared
 
-def JR_n(c, n):
+def JR_n(c:CPU, n:int) -> None:
     if n <= 127:
         c.r.PC += n
     else:
         c.r.PC += n - 256
 
-def cpl(c, _):
+def cpl(c:CPU, _:int) -> None:
     c.r.A = (~c.r.A) & 0xFF
     c.r.fN = True
     c.r.fH = True
 
-def add_sp(c, n):
+def add_sp(c:CPU, n:int) -> None:
     t = c.r.SP + as_signed(n)
     c.r.fH = (((c.r.SP & 0xF) + (n & 0xF)) > 0xF)
     c.r.fC = (((c.r.SP & 0xFF) + (n & 0xFF)) > 0xFF)
@@ -281,42 +283,36 @@ def add_sp(c, n):
     t &= 0xFFFF
     c.r.SP = t
 
-def ld_hl_SP_plus(c, n):
+def ld_hl_SP_plus(c:CPU, n:int) -> None:
     c.r.fH = (((c.r.SP & 0xF) + (n & 0xF)) > 0xF)
     c.r.fC = (((c.r.SP & 0xFF) + (n & 0xFF)) > 0xFF)
     c.r.fN = False
     c.r.fZ = False
     c.r.HL = (c.r.SP + as_signed(n)) & 0xFFFF
 
-
-class Instruction(enum.Enum):
-
-    def __new__(cls, *args, **kwds):
-        value = args[0]
-        obj = object.__new__(cls)
+class Instruction(Enum):
+    def __new__(cls:Type[Instruction], a:int,b:int,c:int,d:Callable) -> Instruction:
+        value = a
+        obj:Instruction = object.__new__(cls)
+        #obj = super(BaseInstr, cls).__new__(cls, a)
         obj._value_ = value
+
         return obj
 
-    def __init__(self, _, argbytes, cycles, op):
+    def __init__(self, v:int, argbytes:int, cycles:int, op:Callable) -> None:
+        #super().__init__()
         self.argbytes = argbytes
         self.cycles = cycles
-        self.op = op
+        self.op:Callable = op
         # Prettify the function names for printing traces
         # Prebake to optimise printing
         strname = re.sub(r"(.*)_v(\w+)(.*)", r"\1_(\2)\3", self.name)
         strname = re.sub(r"_n$", r"_#", strname)
         strname = re.sub(r"_n_", r"_#_", strname)
-        self.str = f"{self.value:02X} {strname.replace('_', ' ')}"
+        self.str:str = f"{self.value:02X} {strname.replace('_', ' ')}"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.str
-
-    def __call__(self, c, arg):
-        return self.op(c, arg)
-
-    @classmethod
-    def _missing_(cls, val):
-        raise ValueError(f"Instruction not implemented: {val} ({val:02X})")
 
     NOP         = 0, 0, 4, nop                                                                               # 00
     LD_BC_nn    = 1, 2, 12, lambda c, nn: setattr(c.r, 'BC', nn)                                             # 01
@@ -333,7 +329,7 @@ class Instruction(enum.Enum):
     INC_C       = 12, 0, 4, lambda c, _: setattr(c.r, 'C', inc(c.r, c.r.C))                                  # 0C
     DEC_C       = 13, 0, 4, lambda c, _: setattr(c.r, 'C', dec(c.r, c.r.C))                                  # 0D
     LD_C_n      = 14, 1, 8, lambda c, n: setattr(c.r, 'C', n)                                                # 0E
-    RRCA        = 15, 0, 4, lambda c, _: [setattr(c.r, 'A', rrc(c.r, c.r.A)), setattr(c.r, "fZ", False)]     # 0F
+    RRCA        = 15, 0, 4, lambda c, _: [setattr(c.r, 'A', rrc(c.r, c.r.A)), setattr(c.r, "fZ", False)]     # type: ignore # 0F
     STOP        = 16, 1, 4, stop                                                                             # 10 00
     LD_DE_nn    = 17, 2, 12, lambda c, nn: setattr(c.r, 'DE', nn)                                            # 11
     LD_vDE_A    = 18, 0, 8, lambda c, _: setitem(c.m, c.r.DE, c.r.A)                                         # 12
@@ -341,7 +337,7 @@ class Instruction(enum.Enum):
     INC_D       = 20, 0, 4, lambda c, _: setattr(c.r, 'D', inc(c.r, c.r.D))                                  # 14
     DEC_D       = 21, 0, 4, lambda c, _: setattr(c.r, 'D', dec(c.r, c.r.D))                                  # 15
     LD_D_n      = 22, 1, 8, lambda c, n: setattr(c.r, 'D', n)                                                # 16
-    RLA         = 23, 0, 4, lambda c, _: [setattr(c.r, 'A', rl(c.r, c.r.A)), setattr(c.r, "fZ", False)]      # 17
+    RLA         = 23, 0, 4, lambda c, _: [setattr(c.r, 'A', rl(c.r, c.r.A)), setattr(c.r, "fZ", False)]      # type: ignore # 17
     JR_n        = 24, 1, 8, JR_n                                                                             # 18
     ADD_HL_DE   = 25, 0, 8, lambda c, _: setattr(c.r, "HL", add16(c.r, c.r.HL, c.r.DE))                      # 19
     LD_A_vDE    = 26, 0, 8,  lambda c, _: setattr(c.r, "A", c.m[c.r.DE])                                     # 1A
@@ -349,10 +345,10 @@ class Instruction(enum.Enum):
     INC_E       = 28, 0, 4, lambda c, _: setattr(c.r, 'E', inc(c.r, c.r.E))                                  # 1C
     DEC_E       = 29, 0, 4, lambda c, _: setattr(c.r, 'E', dec(c.r, c.r.E))                                  # 1D
     LD_E_n      = 30, 1, 8, lambda c, n: setattr(c.r, 'E', n)                                                # 1E
-    RRA         = 31, 0, 4, lambda c, _: [setattr(c.r, 'A', rr(c.r, c.r.A)), setattr(c.r, "fZ", False)]      # 1F
+    RRA         = 31, 0, 4, lambda c, _: [setattr(c.r, 'A', rr(c.r, c.r.A)), setattr(c.r, "fZ", False)]      # type: ignore # 1F
     JR_NZ_n     = 32, 1, 8,  lambda c, n: setattr(c.r, "PC", c.r.PC + as_signed(n)) if not c.r.fZ else 1     # 20
     LD_HL_nn    = 33, 2, 12, lambda c, nn: setattr(c.r, 'HL', nn)                                            # 21
-    LD_HLi_A    = 34, 0, 8,  lambda c, _: [setitem(c.m, c.r.HL, c.r.A), setattr(c.r, "HL", c.r.HL+1)]        # 22
+    LD_HLi_A    = 34, 0, 8,  lambda c, _: [setitem(c.m, c.r.HL, c.r.A), setattr(c.r, "HL", c.r.HL+1)]        # type: ignore # 22
     INC_HL      = 35, 0, 8, lambda c, _: setattr(c.r, 'HL', (c.r.HL+1)&0xFFFF)                               # 23
     INC_H       = 36, 0, 4, lambda c, _: setattr(c.r, 'H', inc(c.r, c.r.H))                                  # 24
     DEC_H       = 37, 0, 4, lambda c, _: setattr(c.r, 'H', dec(c.r, c.r.H))                                  # 25
@@ -360,7 +356,7 @@ class Instruction(enum.Enum):
     DAA         = 39, 0, 4, lambda c, _: daa(c.r)                                                            # 27
     JR_Z_n      = 40, 1, 8, lambda c, n: setattr(c.r, "PC", c.r.PC + as_signed(n)) if c.r.fZ else 1          # 28
     ADD_HL_HL   = 41, 0, 8, lambda c, _: setattr(c.r, "HL", add16(c.r, c.r.HL, c.r.HL))                      # 29
-    LD_A_HLi    = 42, 0, 8,  lambda c, _: [setattr(c.r, "A", c.m[c.r.HL]), setattr(c.r, "HL", c.r.HL+1)]     # 2A
+    LD_A_HLi    = 42, 0, 8,  lambda c, _: [setattr(c.r, "A", c.m[c.r.HL]), setattr(c.r, "HL", c.r.HL+1)]     # type: ignore # 2A
     DEC_HL      = 43, 0, 8, lambda c, _: setattr(c.r, 'HL', (c.r.HL-1) & 0xFFFF)                             # 2B
     INC_L       = 44, 0, 4,  lambda c, _: setattr(c.r, 'L', inc(c.r, c.r.L))                                 # 2C
     DEC_L       = 45, 0, 4,  lambda c, _: setattr(c.r, 'L', dec(c.r, c.r.L))                                 # 2D
@@ -368,7 +364,7 @@ class Instruction(enum.Enum):
     CPL         = 47, 0, 4, cpl                                                                              # 2F
     JR_NC_n     = 48, 1, 8, lambda c, n: setattr(c.r, "PC", c.r.PC + as_signed(n)) if not c.r.fC else 1      # 30
     LD_SP_nn    = 49, 2, 12, lambda c, nn: setattr(c.r, 'SP', nn)                                            # 31
-    LD_HLd_A    = 50, 0, 8,  lambda c, _: [setitem(c.m, c.r.HL, c.r.A), setattr(c.r, "HL", c.r.HL-1)]        # 32
+    LD_HLd_A    = 50, 0, 8,  lambda c, _: [setitem(c.m, c.r.HL, c.r.A), setattr(c.r, "HL", c.r.HL-1)]        # type: ignore # 32
     INC_SP      = 51, 0, 8, lambda c, _: setattr(c.r, 'SP', (c.r.SP+1)&0xFFFF)                               # 33
     INC_vHL     = 52, 0, 12,  lambda c, _: setitem(c.m, c.r.HL, inc(c.r, c.m[c.r.HL]))                       # 34
     DEC_vHL     = 53, 0, 12,  lambda c, _: setitem(c.m, c.r.HL, dec(c.r, c.m[c.r.HL]))                       # 35
@@ -376,7 +372,7 @@ class Instruction(enum.Enum):
     SCF         = 55, 0, 4, scf                                                                              # 37
     JR_C_n      = 56, 1, 8, lambda c, n: setattr(c.r, "PC", c.r.PC + as_signed(n)) if c.r.fC else 1          # 38
     ADD_HL_SP   = 57, 0, 8, lambda c, _: setattr(c.r, "HL", add16(c.r, c.r.HL, c.r.SP))                      # 39
-    LD_A_HLd    = 58, 0, 8,  lambda c, _: [setattr(c.r, "A", c.m[c.r.HL]), setattr(c.r, "HL", c.r.HL-1)]     # 3A
+    LD_A_HLd    = 58, 0, 8,  lambda c, _: [setattr(c.r, "A", c.m[c.r.HL]), setattr(c.r, "HL", c.r.HL-1)]     # type: ignore # 3A
     DEC_SP      = 59, 0, 8, lambda c, _: setattr(c.r, 'SP', (c.r.SP - 1) & 0xFFFF)                           # 3B
     INC_A       = 60, 0, 4,  lambda c, _: setattr(c.r, 'A', inc(c.r, c.r.A))                                 # 3c
     DEC_A       = 61, 0, 4, lambda c, _: setattr(c.r, 'A', dec(c.r, c.r.A))                                  # 3D
@@ -535,7 +531,7 @@ class Instruction(enum.Enum):
     SUB_A_n     = 214, 1, 8,  lambda c, n: subA(c.r, n)                                                      # D6
     RST_10H     = 215, 0, 32, lambda c, _: call(c, 0x10)                                                     # D7
     RET_C       = 216, 0, 8, lambda c, _: ret(c, _) if c.r.fC else 1                                         # D8
-    RETI        = 217, 0, 8, lambda c, _: [ret(c, _), ei(c, _)]                                              # D9
+    RETI        = 217, 0, 8, lambda c, _: [ret(c, _), ei(c, _)]                                              # type: ignore # D9
     JP_C_nn     = 218, 2, 12,  lambda c, nn: setattr(c.r, "PC", nn) if c.r.fC else 1                         # DA
     # DB
     CALL_C      = 220, 2, 12, lambda c, nn: call(c, nn) if c.r.fC else 1                                     # DC
@@ -573,29 +569,22 @@ class Instruction(enum.Enum):
     RST_38H     = 255, 0, 32, lambda c, _: call(c, 0x38)                                                     # FF
 
 
-class CB_Instruction(enum.Enum):
+class CB_Instruction(Enum):
 
-    def __new__(cls, *args, **kwds):
+    def __new__(cls, *args:int, **kwds:int):  # type: ignore
         value = args[0]
         obj = object.__new__(cls)
         obj._value_ = value
         return obj
 
-    def __init__(self, _, argbytes, cycles, op):
+    def __init__(self, _:int, argbytes:int, cycles:int, op:Callable) -> None:
         self.argbytes = argbytes
         self.cycles = cycles
         self.op = op
-        self.str = f"{self.value:02X} {self.name.replace('_', ' ')}"
+        self.str:str = f"{self.value:02X} {self.name.replace('_', ' ')}"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.str
-
-    def __call__(self, c, arg):
-        return self.op(c, arg)
-
-    @classmethod
-    def _missing_(cls, val):
-        raise ValueError(f"CB Instruction not implemented: {val} (CB {val:02X})")
 
 
     RLC_B       = 0, 0, 8,  lambda c, _: setattr(c.r, "B", rlc(c.r, c.r.B))                  # 00

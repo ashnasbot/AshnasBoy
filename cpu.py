@@ -1,14 +1,16 @@
 from time import time, sleep
 from datetime import datetime
+from typing import Any, Union
 
 from instruction import CB_Instruction, Instruction
 import reg
 import mmu
+import ppu
 
 
 class CPU():
 
-    def __init__(self, mem, ppu):
+    def __init__(self, mem: mmu.MMU, ppu: ppu.PPU) -> None:
         self.reg = reg.Reg()
         self.r = self.reg
         self.mem = mem
@@ -22,10 +24,12 @@ class CPU():
         self.DIV_counter = 0
         self.TIMA_counter = 0
         self.TIMA_dividers = [1024, 16, 64, 256]
+        self.remaining_cycles = 0
 
 
-    def clock(self, cycles):
+    def clock(self, cycles: int) -> None:
         # DIV
+        self.remaining_cycles -= cycles
         self.DIV_counter += cycles
         if self.DIV_counter >= 256:
             self.DIV += (self.DIV_counter >> 8) # Add overflown bits to DIV
@@ -67,92 +71,94 @@ class CPU():
             if intr & 0b00001 and enabled & 0b00001:  # VBLANK
                 self.r.IME = False
                 self.m.mem[0xFF0F] &= 0b11110
-                Instruction.CALL(self, 0x40)
+                Instruction.CALL.op(self, 0x40)
             elif intr & 0b00010 and enabled & 0b00010:  # STAT
                 self.r.IME = False
                 self.m.mem[0xFF0F] &= 0b11101
-                Instruction.CALL(self, 0x48)
+                Instruction.CALL.op(self, 0x48)
             elif intr & 0b00100 and enabled & 0b00100:  # TIMER
                 self.r.IME = False
                 self.m.mem[0xFF0F] &= 0b11011
-                Instruction.CALL(self, 0x50)
+                Instruction.CALL.op(self, 0x50)
 
-    def read_byte(self):
+    def read_byte(self) -> int:
         self.reg.PC += 1
-        return self.mem.mem[self.reg.PC-1]
+        return self.m[self.reg.PC-1]
 
-    def read_word(self):
+    def read_word(self) -> int:
         l = self.m[self.r.PC]
         self.r.PC += 1
         h = self.m[self.r.PC]
         self.r.PC += 1
         return (h << 8) + l
 
-    def boot(self, rom):
-        if not __debug__:
-            self.m.load_rom(rom, boot=True)
-            self.r.PC = 0x0000
-        else:
-            self.m.load_rom(rom, boot=False)
-            self.r.A = 0x01
-            self.r.BC = 0x0013
-            self.r.DE = 0x00D8
-            self.r.DE = 0x00D8
-            self.r.HL = 0x014D
-            self.r.SP = 0xFFFE
-            self.r.fZ = True
-            self.r.fH = True
-            self.r.fC = True
-            self.m.IO[0x05] = 0x00   # TIMA
-            self.m.IO[0x06] = 0x00   # TMA
-            self.m.IO[0x07] = 0x00   # TAC
-            self.m.IO[0x10] = 0x80   # NR10
-            self.m.IO[0x11] = 0xBF   # NR11
-            self.m.IO[0x12] = 0xF3   # NR12
-            self.m.IO[0x14] = 0xBF   # NR14
-            self.m.IO[0x16] = 0x3F   # NR21
-            self.m.IO[0x17] = 0x00   # NR22
-            self.m.IO[0x19] = 0xBF   # NR24
-            self.m.IO[0x1A] = 0x7F   # NR30
-            self.m.IO[0x1B] = 0xFF   # NR31
-            self.m.IO[0x1C] = 0x9F   # NR32
-            self.m.IO[0x1E] = 0xBF   # NR33
-            self.m.IO[0x20] = 0xFF   # NR41
-            self.m.IO[0x21] = 0x00   # NR42
-            self.m.IO[0x22] = 0x00   # NR43
-            self.m.IO[0x23] = 0xBF   # NR30
-            self.m.IO[0x24] = 0x77   # NR50
-            self.m.IO[0x25] = 0xF3   # NR51
-            self.m.IO[0x26] = 0xF1   # NR52
-            self.m.IO[0x40] = 0x91   # LCDC
-            self.m.IO[0x42] = 0x00   # SCY
-            self.m.IO[0x43] = 0x00   # SCX
-            self.m.IO[0x45] = 0x00   # LYC
-            self.m.IO[0x47] = 0xFC   # BGP
-            self.m.IO[0x48] = 0xFF   # OBP0
-            self.m.IO[0x49] = 0xFF   # OBP1
-            self.m.IO[0x4A] = 0x00   # WY
-            self.m.IO[0x4B] = 0x00   # WX
-            self.r.PC = 0x0100
+    def advance_frame(self, _: Any) -> None:
+        self.remaining_cycles += 70256
+        self.run()
+
+    def boot(self) -> None:
+        #if not __debug__:
+        self.r.PC = 0x0000
+        #else:
+        #    self.r.A = 0x01
+        #    self.r.BC = 0x0013
+        #    self.r.DE = 0x00D8
+        #    self.r.DE = 0x00D8
+        #    self.r.HL = 0x014D
+        #    self.r.SP = 0xFFFE
+        #    self.r.fZ = True
+        #    self.r.fH = True
+        #    self.r.fC = True
+        #    self.m.IO[0x05] = 0x00   # TIMA
+        #    self.m.IO[0x06] = 0x00   # TMA
+        #    self.m.IO[0x07] = 0x00   # TAC
+        #    self.m.IO[0x10] = 0x80   # NR10
+        #    self.m.IO[0x11] = 0xBF   # NR11
+        #    self.m.IO[0x12] = 0xF3   # NR12
+        #    self.m.IO[0x14] = 0xBF   # NR14
+        #    self.m.IO[0x16] = 0x3F   # NR21
+        #    self.m.IO[0x17] = 0x00   # NR22
+        #    self.m.IO[0x19] = 0xBF   # NR24
+        #    self.m.IO[0x1A] = 0x7F   # NR30
+        #    self.m.IO[0x1B] = 0xFF   # NR31
+        #    self.m.IO[0x1C] = 0x9F   # NR32
+        #    self.m.IO[0x1E] = 0xBF   # NR33
+        #    self.m.IO[0x20] = 0xFF   # NR41
+        #    self.m.IO[0x21] = 0x00   # NR42
+        #    self.m.IO[0x22] = 0x00   # NR43
+        #    self.m.IO[0x23] = 0xBF   # NR30
+        #    self.m.IO[0x24] = 0x77   # NR50
+        #    self.m.IO[0x25] = 0xF3   # NR51
+        #    self.m.IO[0x26] = 0xF1   # NR52
+        #    self.m.IO[0x40] = 0x91   # LCDC
+        #    self.m.IO[0x42] = 0x00   # SCY
+        #    self.m.IO[0x43] = 0x00   # SCX
+        #    self.m.IO[0x45] = 0x00   # LYC
+        #    self.m.IO[0x47] = 0xFC   # BGP
+        #    self.m.IO[0x48] = 0xFF   # OBP0
+        #    self.m.IO[0x49] = 0xFF   # OBP1
+        #    self.m.IO[0x4A] = 0x00   # WY
+        #    self.m.IO[0x4B] = 0x00   # WX
+        #    self.r.PC = 0x0100
 
         # Not technically the boot rom - these should be moved elsewhere
         self.m.mem[0xFF00] = 0xFF   # Joypad
         self.m.mem[0xFF04] = 0x00   # DIV
 
-    def run(self):
+    def run(self) -> None:
 
         arg = None
         trace = False
         instrs = { i.value: i for i in Instruction }
         cbinstrs = { i.value: i for i in CB_Instruction }
-        while True:
+        while self.remaining_cycles > 0:
             if self.reg.HALT:
                 self.clock(4)
                 continue
 
             ipc = self.reg.PC
 
-            i = instrs[self.mem[self.reg.PC]]
+            i:Union[Instruction, CB_Instruction] = instrs[self.mem[self.reg.PC]]
             if trace:
                 trc = f"{self.reg} (cy: {self.cycles}) ppu:+0 |"
 
@@ -174,7 +180,7 @@ class CPU():
             elif trace:
                     print(f"{trc}[00]{ipc:04X} {i}")
 
-            # TODO: arg, reg, mem
+            # TODO: arg, reg, mem?
             i.op(self, arg)
 
             #if self.cycles > 100000000:

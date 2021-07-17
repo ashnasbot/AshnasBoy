@@ -1,46 +1,48 @@
 from array import array
 import functools
+from mmu import MMU
+from interface import Interface
 from time import time
 
-import pyglet
+from pyglet.gl import GLubyte
 
-from reg import LCDC, STAT
+from reg import LCDC, Register, STAT
 
 ROWS, COLS = 144, 160
 TILES = 384
 
 @functools.lru_cache()
-def color_code(byte1, byte2, offset):
+def color_code(byte1:int, byte2:int, offset:int) -> int:
     return (((byte2 >> (offset)) & 0b1) << 1) + ((byte1 >> (offset)) & 0b1)
 
 class PPU():
-    def __init__(self, interface, mem) -> None:
+    def __init__(self, interface:Interface, mem:MMU) -> None:
         self.vram = mem._vram
-        self.oam = mem.OAM
+        self.OAM = mem.OAM
         self.io = mem.IO
         self.mem = mem
-        self._interface = interface
+        self._ui = interface
 
         base = bytearray([0xFF] * (160*144))
 
-        from pyglet.gl import GLubyte
         self._screenbuffer = (GLubyte * (160*144))(*base)
         self._tiles = array("B", [0xFF] * (TILES*8*8))
 
-        self.color_palette = (GLubyte * 4)(*(0xFF, 160, 96, 00))
         self._LCDC = LCDC()
         self._STAT = STAT()
+        self.bg_palette = Palette()
         self.ly_window = -1
 
         mem.add_io_handler(0xFF40, self._LCDC)
         mem.add_io_handler(0xFF41, self._STAT)
+        mem.add_io_handler(0xFF47, self.bg_palette)
 
         self.scancycle = 0
         self.vblank_toggle = False
         self.frames = 0
-        self.frame_start = time()
+        #self.frame_start = time()
 
-    def clock(self, cycles):
+    def clock(self, cycles:int) -> None:
         scancycle = self.scancycle + cycles
         self.scancycle = scancycle
         if self._LCDC.screen_on:
@@ -76,11 +78,11 @@ class PPU():
                     self._STAT.mode = 2
                     scanline = -1
                     self.frames += 1
-                    tgt = self.frame_start + (1/59.7)
+                    #tgt = self.frame_start + (1/59.7)
 
-                    while tgt >= time():  # Crude frame limiter
-                        continue
-                    self.frame_start = time()
+                    #while tgt >= time():  # Crude frame limiter
+                    #    continue
+                    #self.frame_start = time()
                 self.io[0x44] = scanline + 1
                 if scanline == self.io[0x45]:
                     self._STAT.lyc_eq_ly = True
@@ -94,14 +96,20 @@ class PPU():
                 self.scancycle %= 69768
                 self.clear_framebuffer()
                 self.frames += 1
-                tgt = self.frame_start + (1/59.7)
-
-                while tgt >= time():  # Crude frame limiter
-                    continue
                 self.frame()
-                self.frame_start = time()
+            return
+            #if self.scancycle > 69768:  # A whole frame has elapsed
+            #    self.scancycle %= 69768
+            #    self.clear_framebuffer()
+            #    self.frames += 1
+            #    tgt = self.frame_start + (1/59.7)
 
-    def render_scanline(self, y):
+            #    while tgt >= time():  # Crude frame limiter
+            #        continue
+            #    self.frame()
+            #    self.frame_start = time()
+
+    def render_scanline(self, y:int) -> None:
         scx = self.io[0x43]        # SCX
         scy = self.io[0x42]        # SCY
         wx = self.io[0x4B] - 7     # WX
@@ -118,8 +126,8 @@ class PPU():
         if self._LCDC.window_enable and wy <= y and wx < 160:
             self.ly_window += 1
 
+        sy = (22880 - (y*160))
         for x in range(160):
-            pos = (22880 - (y*160)) + x
             if self._LCDC.window_enable and wy <= y and wx <= x:
                 wt = self.vram[win_off + (self.ly_window) // 8 * 32 % 0x400 + (x-wx) // 8 % 32]
                 # If using signed tile indices, modify index
@@ -127,7 +135,7 @@ class PPU():
                     # (x ^ 0x80 - 128) to convert to signed, then
                     # add 256 for offset (reduces to + 128)
                     wt = (wt ^ 0x80) + 128
-                self._screenbuffer[pos] = self._tiles[(8*(8*wt + (self.ly_window) % 8)) + (x-wx) % 8]
+                self._screenbuffer[sy+x] = self._tiles[(8*(8*wt + (self.ly_window) % 8)) + (x-wx) % 8]
             elif self._LCDC.bg_enable:
                 bt = self.vram[bg_off + (y+scy) // 8 * 32 % 0x400 + (x+scx) // 8 % 32]
                 # If using signed tile indices, modify index
@@ -136,38 +144,79 @@ class PPU():
                     # add 256 for offset (reduces to + 128)
                     bt = (bt ^ 0x80) + 128
                 #self._screenbuffer[pos] = self._tilecache[8*bt + y % 8][x % 8]
-                self._screenbuffer[pos] = self._tiles[(8*(8*bt + (y+scy) % 8)) + (x+offset) % 8]
+                self._screenbuffer[sy+x] = self._tiles[(8*(8*bt + (y+scy) % 8)) + (x+offset) % 8]
             else:
-                self._screenbuffer[pos] = self.color_palette[0]
+                self._screenbuffer[sy+x] = self.bg_palette[0]
+
+        # Render Sprites
+
+        bgpkey = self.bg_palette[0]
+        spriteheight = 16 if self._LCDC.sprite_height else 8
+        
+        for n in range(0x00, 0xA0, 4):
+            obj_attr = self.OAM[n:n+4]
+            ypos = obj_attr[0] - 16
+            xpos = obj_attr[1] - 8
+            tileindex = obj_attr[2]
+            if spriteheight == 16:
+                tileindex &= 0b11111110
+            attr = obj_attr[3]
+            flip_x = attr & 0b00100000
+            flip_y = attr & 0b01000000
+
+            if ypos <= y < ypos + spriteheight:
+                ty = spriteheight - (y - ypos) - 1 if flip_y else y - ypos  # tile row
+                tile_row = 8 * (8 * tileindex + ty)
+                sy = 22880 - (y*160)  # screen position
+                row = range(7, -1 , -1) if flip_x else range(8)  # row ordering
+                for tx in row:
+                    pixel = self._tiles[tile_row + tx]
+
+                    if 0 <= xpos < COLS:
+                        if not pixel == bgpkey:
+                            self._screenbuffer[sy + xpos] = pixel
+                    xpos += 1
 
         if y == 143:
-            # Reset at the end of a frame. We set it to -1, so it will be 0 after the first increment
             self.ly_window = -1
 
-    def clear_framebuffer(self):
-        self._screenbuffer[:] = [self.color_palette[0] for _ in range(160*144)]
+    def clear_framebuffer(self) -> None:
+        self._screenbuffer[:] = [self.bg_palette[0] for _ in range(160*144)]
 
-    def frame(self):
+    def frame(self) -> None:
         # TODO: separate out - is this something for mmu?
         for t in range(0x8000, 0x9800, 16):
             for k in range(0, 16, 2): # 2 bytes for each line
                 byte1 = self.vram[t + k - 0x8000]
                 byte2 = self.vram[t + k + 1 - 0x8000]
-                y = (t+k-0x8000) // 2
+                y = (t+k-0x8000)*4
 
                 for x in range(8):
                     colorcode = ((((byte2 >> (7-x)) & 0b1) << 1) + ((byte1 >> (7-x)) & 0b1))
 
-                    self._tiles[(y*8) + x] = self.color_palette[colorcode]
+                    self._tiles[y + x] = self.bg_palette[colorcode]
 
-        self._interface.update_screen(self._screenbuffer)
-        pyglet.clock.tick()
+        self._ui.update_screen(self._screenbuffer)
 
-        for window in pyglet.app.windows:
-            window.switch_to()
-            window.dispatch_events()
-            if window.exit_triggered:
-                import sys
-                sys.exit(0)
-            window.dispatch_event('on_draw')
-            window.flip()
+class Palette(Register):
+    def __init__(self) -> None:
+        self._value = 0
+        self.arr = (GLubyte * 4)(*(0xFF, 160, 96, 00))
+
+    def __getitem__(self, val:int) -> GLubyte:
+        return self.arr[val]
+
+    @property
+    def value(self) -> int:
+        return self._value
+
+    @value.setter
+    def value(self, val: int) -> None:
+        if self._value == val:
+            return
+
+        self._value = val
+        vals = [0] * 4
+        for n in range(4):
+            vals[n] = 255 - (85 * ((val >> n * 2) & 0b11))
+        self.arr = (GLubyte * 4)(*(vals))
