@@ -24,6 +24,8 @@ class Reg():
         self.HALT:bool = False
         self.STOP:bool = False
         self.IME:bool = False
+        # extra
+        self.ei = 0
 
     @property
     def F(self) -> int:
@@ -162,3 +164,37 @@ class STAT(Register):
         self.mode_0_hblank_enable = bool(val & 0b00001000)  # 3
         self.lyc_eq_ly            = bool(val & 0b00000100)  # 2
         self.mode                 = bool(val & 0b00000011)  # 0-1
+
+class DIV(Register):
+    def __init__(self) -> None:
+        super().__init__()
+        self._value = 0x00
+
+    @property
+    def value(self) -> int:
+        # Desn't really matter if this overflows until we read it,
+        # as we only ever check individual bits otherwise
+        self._value &= 0xFFFF
+        return self._value >> 8
+
+    @value.setter
+    def value(self, val: int) -> None:
+        # Any write to DIV resets it
+        self._value = 0x00
+
+class TIMA(Register):
+    def __init__(self) -> None:
+        super().__init__()
+        self._value = 0x00
+        # The previous DIV bit we're interested in
+        # so that we can identify a falling edge
+        self.prev = 0
+
+    @property
+    def value(self) -> int:
+        return self._value
+
+    @value.setter
+    def value(self, val: int) -> None:
+        self._value = val
+        self._counter = 0

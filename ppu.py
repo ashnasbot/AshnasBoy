@@ -27,15 +27,22 @@ class PPU():
 
         self._screenbuffer = (GLubyte * (160*144))(*base)
         self._tiles = array("B", [0xFF] * (TILES*8*8))
+        self._sprites0 = array("B", [0xFF] * (TILES*8*8))
+        self._sprites1 = array("B", [0xFF] * (TILES*8*8))
 
         self._LCDC = LCDC()
         self._STAT = STAT()
         self.bg_palette = Palette()
+        self.OBP0 = Palette()
+        self.OBP1 = Palette()
         self.ly_window = -1
+        self.alpha = 0xCC  # TODO: this needs a home
 
         mem.add_io_handler(0xFF40, self._LCDC)
         mem.add_io_handler(0xFF41, self._STAT)
         mem.add_io_handler(0xFF47, self.bg_palette)
+        mem.add_io_handler(0xFF48, self.OBP0)
+        mem.add_io_handler(0xFF49, self.OBP1)
 
         self.scancycle = 0
         self.vblank_toggle = False
@@ -78,11 +85,6 @@ class PPU():
                     self._STAT.mode = 2
                     scanline = -1
                     self.frames += 1
-                    #tgt = self.frame_start + (1/59.7)
-
-                    #while tgt >= time():  # Crude frame limiter
-                    #    continue
-                    #self.frame_start = time()
                 self.io[0x44] = scanline + 1
                 if scanline == self.io[0x45]:
                     self._STAT.lyc_eq_ly = True
@@ -92,22 +94,47 @@ class PPU():
                 else:
                     self._STAT.lyc_eq_ly = False
         else:
+            self._STAT._value = 0
+            self.io[0x44] = 0
             if self.scancycle > 69768:  # A whole frame has elapsed
                 self.scancycle %= 69768
                 self.clear_framebuffer()
                 self.frames += 1
                 self.frame()
             return
-            #if self.scancycle > 69768:  # A whole frame has elapsed
-            #    self.scancycle %= 69768
-            #    self.clear_framebuffer()
-            #    self.frames += 1
-            #    tgt = self.frame_start + (1/59.7)
 
-            #    while tgt >= time():  # Crude frame limiter
-            #        continue
-            #    self.frame()
-            #    self.frame_start = time()
+    def render_scanline_fastly(self, scanline:int) -> None:
+        scx = self.io[0x43]        # SCX
+        scy = self.io[0x42]        # SCY
+        mapoffs = 0x1800 if self._LCDC.bg_tile_map_select == 0 else 0x1C00
+
+        mapoffs+=(((scanline+scy)&255)>>3)<<5
+
+        lineoffs=scx>>3
+
+        x=scx & 7
+        y=(scanline+scy)&7
+
+        pixelOffset=0
+
+        pixelOffset=scanline * 160
+
+        tile=self.vram[mapoffs+lineoffs]
+
+        if not self._LCDC.tile_data_select and tile < 128:
+            tile += 256
+
+        for _ in range(160):
+            self._screenbuffer[pixelOffset] = self._tiles[(tile * 64) + (y * 8) + x]
+            pixelOffset += 1
+
+            x += 1
+            if x==8:
+                x=0
+                lineoffs=(lineoffs+1)&31
+                tile=self.vram[mapoffs+lineoffs]
+                if not self._LCDC.tile_data_select and tile < 128:
+                    tile += 256
 
     def render_scanline(self, y:int) -> None:
         scx = self.io[0x43]        # SCX
@@ -121,8 +148,6 @@ class PPU():
         # Used for the half tile at the left side when scrolling
         offset = scx & 0b111
 
-        # Weird behavior, where the window has it's own internal line counter. It's only incremented whenever the
-        # window is drawing something on the screen.
         if self._LCDC.window_enable and wy <= y and wx < 160:
             self.ly_window += 1
 
@@ -163,6 +188,8 @@ class PPU():
             attr = obj_attr[3]
             flip_x = attr & 0b00100000
             flip_y = attr & 0b01000000
+            objpriority = attr & 0b10000000
+            sprites = (self._sprites1 if attr & 0b10000 else self._sprites0)
 
             if ypos <= y < ypos + spriteheight:
                 ty = spriteheight - (y - ypos) - 1 if flip_y else y - ypos  # tile row
@@ -170,11 +197,15 @@ class PPU():
                 sy = 22880 - (y*160)  # screen position
                 row = range(7, -1 , -1) if flip_x else range(8)  # row ordering
                 for tx in row:
-                    pixel = self._tiles[tile_row + tx]
+                    pos = sy + xpos
 
                     if 0 <= xpos < COLS:
-                        if not pixel == bgpkey:
-                            self._screenbuffer[sy + xpos] = pixel
+                        pixel = sprites[tile_row + tx]
+                        if objpriority and not self._screenbuffer[pos] == bgpkey:
+                            pixel = self.alpha
+
+                        if not pixel == self.alpha:
+                            self._screenbuffer[pos] = pixel
                     xpos += 1
 
         if y == 143:
@@ -193,15 +224,23 @@ class PPU():
 
                 for x in range(8):
                     colorcode = ((((byte2 >> (7-x)) & 0b1) << 1) + ((byte1 >> (7-x)) & 0b1))
+                    pos = x+y
 
-                    self._tiles[y + x] = self.bg_palette[colorcode]
+                    self._tiles[pos] = self.bg_palette.arr[colorcode]
+                    if colorcode == 0:
+                        self._sprites0[pos] = self.alpha
+                        self._sprites1[pos] = self.alpha
+                    else:
+                        self._sprites0[pos] = self.OBP0.arr[colorcode]
+                        self._sprites1[pos] = self.OBP1.arr[colorcode]
 
         self._ui.update_screen(self._screenbuffer)
 
 class Palette(Register):
+
     def __init__(self) -> None:
         self._value = 0
-        self.arr = (GLubyte * 4)(*(0xFF, 160, 96, 00))
+        self.arr = (GLubyte * 4)(*(0xFF, 0xA0, 60, 00))
 
     def __getitem__(self, val:int) -> GLubyte:
         return self.arr[val]

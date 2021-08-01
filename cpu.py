@@ -1,8 +1,7 @@
-from time import time, sleep
-from datetime import datetime
-from typing import Any, Union
+from interface import Interface
+from typing import Any
 
-from instruction import CB_Instruction, Instruction
+from instruction import SimpleInstr, instrs, cbinstrs
 import reg
 import mmu
 import ppu
@@ -10,7 +9,7 @@ import ppu
 
 class CPU():
 
-    def __init__(self, mem: mmu.MMU, ppu: ppu.PPU) -> None:
+    def __init__(self, mem: mmu.MMU, ppu: ppu.PPU, gui: Interface) -> None:
         self.reg = reg.Reg()
         self.r = self.reg
         self.mem = mem
@@ -18,42 +17,38 @@ class CPU():
         self.ppu = ppu
         self.cycles = 0
         self.IF = self.mem.mem[mmu.IF]
+        self.ui = gui
 
-        self.DIV = 0 # Always showing self.counter with mode 3 divider
-        self.TIMA = 0 # Can be set from RAM 0xFF05
+        self.DIV = reg.DIV()
+        self.TIMA = reg.TIMA()
         self.DIV_counter = 0
         self.TIMA_counter = 0
         self.TIMA_dividers = [1024, 16, 64, 256]
+        self.TIMA_bits = [9, 3, 5, 7]
         self.remaining_cycles = 0
+
+        mem.add_io_handler(0xFF04, self.DIV)
+        mem.add_io_handler(0xFF05, self.TIMA)
 
 
     def clock(self, cycles: int) -> None:
-        # DIV
         self.remaining_cycles -= cycles
-        self.DIV_counter += cycles
-        if self.DIV_counter >= 256:
-            self.DIV += (self.DIV_counter >> 8) # Add overflown bits to DIV
-            self.DIV_counter &= 0xFF # Remove the overflown bits
-            self.DIV &= 0xFF
-            self.m[mmu.DIV] = self.DIV
+        self.DIV._value += cycles
 
         #Timer
-        self.TIMA_counter += cycles
-        TAC = self.m[mmu.TAC]
-        if TAC & 0b100 != 0:
-            divider = self.TIMA_dividers[TAC & 0b11]
+        tac = self.m[mmu.TAC]
+        if tac & 0b100 != 0:  # TIMA enabled
+            divider = self.TIMA_dividers[tac & 0b11]
+            cur_div_bit = self.DIV._value & divider
+            if self.TIMA.prev and not cur_div_bit: # Falling edge
+                self.TIMA._value += 1
+            
+            self.TIMA.prev = cur_div_bit
 
-            if self.TIMA_counter >= divider:
-                self.TIMA_counter -= divider # Keeps possible remainder
-                TIMA = self.m[mmu.TIMA]
-                TIMA += 1
-
-                if TIMA > 0xFF:
-                    TIMA = self.m[mmu.TMA]
-                    TIMA &= 0xFF
-                    if self.m[mmu.IE] & 0b00100:  # TIMER
-                        self.m[mmu.IF] |= 0b00100
-                self.m[mmu.TIMA] = TIMA
+            if self.TIMA._value > 0xFF:
+                self.TIMA._value = self.m[0xFF06]
+                if self.m[mmu.IE] & 0b00100:  # TIMER
+                    self.m[mmu.IF] |= 0b00100
 
         # PPU
         self.ppu.clock(cycles)
@@ -71,15 +66,22 @@ class CPU():
             if intr & 0b00001 and enabled & 0b00001:  # VBLANK
                 self.r.IME = False
                 self.m.mem[0xFF0F] &= 0b11110
-                Instruction.CALL.op(self, 0x40)
+                instrs[205].op(self, 0x40)
             elif intr & 0b00010 and enabled & 0b00010:  # STAT
                 self.r.IME = False
                 self.m.mem[0xFF0F] &= 0b11101
-                Instruction.CALL.op(self, 0x48)
+                instrs[205].op(self, 0x48)
             elif intr & 0b00100 and enabled & 0b00100:  # TIMER
                 self.r.IME = False
                 self.m.mem[0xFF0F] &= 0b11011
-                Instruction.CALL.op(self, 0x50)
+                instrs[205].op(self, 0x50)
+            # TODO: Serial?
+        elif self.r.ei:
+            if self.r.ei == 2:
+                self.r.IME = True
+                self.r.ei = 0
+            else:
+                self.r.ei += 1
 
     def read_byte(self) -> int:
         self.reg.PC += 1
@@ -92,9 +94,10 @@ class CPU():
         self.r.PC += 1
         return (h << 8) + l
 
-    def advance_frame(self, _: Any) -> None:
+    def advance_frame(self, dt: float) -> None:
         self.remaining_cycles += 70256
         self.run()
+        self.ui.do_drawing(dt)
 
     def boot(self) -> None:
         #if not __debug__:
@@ -143,14 +146,11 @@ class CPU():
 
         # Not technically the boot rom - these should be moved elsewhere
         self.m.mem[0xFF00] = 0xFF   # Joypad
-        self.m.mem[0xFF04] = 0x00   # DIV
 
     def run(self) -> None:
 
-        arg = None
+        arg = 0x00
         trace = False
-        instrs = { i.value: i for i in Instruction }
-        cbinstrs = { i.value: i for i in CB_Instruction }
         while self.remaining_cycles > 0:
             if self.reg.HALT:
                 self.clock(4)
@@ -158,7 +158,7 @@ class CPU():
 
             ipc = self.reg.PC
 
-            i:Union[Instruction, CB_Instruction] = instrs[self.mem[self.reg.PC]]
+            i:SimpleInstr = instrs[self.mem[self.reg.PC]]
             if trace:
                 trc = f"{self.reg} (cy: {self.cycles}) ppu:+0 |"
 
@@ -167,7 +167,7 @@ class CPU():
             # TODO: move this into instruction somehow (without overhead)?
             if i.argbytes == 1:
                 arg = self.read_byte()
-                if i == Instruction.CB:
+                if i.value == 0xCB:
                     i = cbinstrs[arg]
                     if i.argbytes == 1:
                         arg = self.read_byte()
@@ -178,12 +178,10 @@ class CPU():
                 if trace:
                     print(f"{trc}[00]{ipc:04X} {arg:04X} {i} ")
             elif trace:
-                    print(f"{trc}[00]{ipc:04X} {i}")
+                arg = 0x00
+                print(f"{trc}[00]{ipc:04X} {i}")
 
             # TODO: arg, reg, mem?
             i.op(self, arg)
-
-            #if self.cycles > 100000000:
-            #    return
 
             self.clock(i.cycles)

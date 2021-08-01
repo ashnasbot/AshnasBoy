@@ -1,4 +1,3 @@
-import sys
 from typing import Any, ByteString
 
 import pyglet
@@ -32,6 +31,10 @@ class Interface(pyglet.window.Window):
         glMatrixMode(GL_PROJECTION)
         glOrtho(0, 320, 0, 288, -1, 1)
         glMatrixMode(GL_MODELVIEW)
+        self.fps = 0.0
+
+        icon = pyglet.image.load('icon.png')
+        self.set_icon(icon)
 
         # creating a texture
         texs = (GLuint * 1) ()
@@ -41,8 +44,6 @@ class Interface(pyglet.window.Window):
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
 
-        self.fps_display = pyglet.window.FPSDisplay(window=self)
-
     def update_screen(self, screen:ByteString) -> None:
         glBindTexture(GL_TEXTURE_2D, self.tex)
         glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 160, 144, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, screen)
@@ -50,12 +51,13 @@ class Interface(pyglet.window.Window):
         self.frame_ready = True
 
     def update_fps(self, dt:float) -> None:
-        fps = self.frames / dt
+        self.fps = self.frames / dt
         self.frames = 0
-        self.set_caption(str(fps))
+        #self.set_caption(str(self.fps))
 
     def on_draw(self) -> None:
-        self.do_drawing(0.0)
+        #self.do_drawing(0.0)
+        pass
 
     def do_drawing(self, dt:float) -> None:
         if not self.frame_ready:
@@ -72,6 +74,7 @@ class Interface(pyglet.window.Window):
         glBindTexture(GL_TEXTURE_2D, 0)
         glFlush()
         self.frames += 1
+        self.frame_ready = False
         
     def on_close(self) -> None:
         pyglet.app.exit()

@@ -10,8 +10,11 @@ from ppu import PPU
 
 print("name", __name__)
 
+def nop(dt: float) -> None:
+    pass
+
 def gb() -> None:
-    for i in range(50):
+    for _ in range(50):
         try:
             interface = Interface(320, 288, vsync=False)
             break
@@ -21,10 +24,10 @@ def gb() -> None:
         raise Exception("Failed to create window")
     print("Window OK")
 
-    crt = MBC("pokeGold.gbc")
+    crt = MBC("poke.gb")
     mem = MMU(interface, crt)
     ppu = PPU(interface, mem)
-    cpu = CPU(mem, ppu)
+    cpu = CPU(mem, ppu, interface)
 
     crt.load_rom(boot=True)
     cpu.boot()
@@ -32,8 +35,18 @@ def gb() -> None:
 
 
     pyglet.clock.schedule_interval(cpu.advance_frame, 1/59.7)
-    #pyglet.clock.schedule_interval(interface.do_drawing, 1/60)
-    pyglet.clock.schedule_interval(interface.update_fps, 1)
+    pyglet.clock.schedule(nop)  # speedhack
+    pyglet.clock.schedule_interval(interface.update_fps, 1.0)
+    #import cProfile, pstats, io
+    #from pstats import SortKey
+    #pr = cProfile.Profile()
+    #pr.enable()
     pyglet.app.run()
+    #pr.disable()
+    #s = io.StringIO()
+    #sortby = SortKey.CUMULATIVE
+    #ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+    #ps.print_stats()
+    #print(s.getvalue())
 
 gb()
