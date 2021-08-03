@@ -54,7 +54,7 @@ class CPU():
         self.ppu.clock(cycles)
 
         # Interrupt
-        if self.r.HALT and self.m.mem[0xFF0F]:
+        if self.r.HALT and self.m.mem[0xFF0F] & self.m.mem[0xFFFF]:
             self.r.HALT = False
 
         if self.r.IME:
