@@ -150,36 +150,37 @@ class CPU():
     def run(self) -> None:
 
         arg = 0x00
-        trace = False
+        #trace = False
         while self.remaining_cycles > 0:
             if self.reg.HALT:
                 self.clock(4)
                 continue
 
-            ipc = self.reg.PC
+            #ipc = self.reg.PC
 
             i:SimpleInstr = instrs[self.mem[self.reg.PC]]
-            if trace:
-                trc = f"{self.reg} (cy: {self.cycles}) ppu:+0 |"
+            #if trace:
+            #    trc = f"{self.reg} (cy: {self.cycles}) ppu:+0 |"
 
             self.reg.PC += 1
 
             # TODO: move this into instruction somehow (without overhead)?
-            if i.argbytes == 1:
-                arg = self.read_byte()
-                if i.value == 0xCB:
-                    i = cbinstrs[arg]
-                    if i.argbytes == 1:
-                        arg = self.read_byte()
-                if trace:
-                    print(f"{trc}[00]{ipc:04X} {arg:02X} {i} ")
-            elif i.argbytes == 2:
-                arg = self.read_word()
-                if trace:
-                    print(f"{trc}[00]{ipc:04X} {arg:04X} {i} ")
-            elif trace:
-                arg = 0x00
-                print(f"{trc}[00]{ipc:04X} {i}")
+            if i.argbytes:
+                if i.argbytes == 1:
+                    arg = self.read_byte()
+                    if i.value == 0xCB:
+                        i = cbinstrs[arg]
+                        if i.argbytes != 0:
+                            arg = self.read_byte()
+                    #if trace:
+                    #    print(f"{trc}[00]{ipc:04X} {arg:02X} {i} ")
+                else:
+                    arg = self.read_word()
+                #if trace:
+                #    print(f"{trc}[00]{ipc:04X} {arg:04X} {i} ")
+            #elif trace:
+            #    arg = 0x00
+            #    print(f"{trc}[00]{ipc:04X} {i}")
 
             # TODO: arg, reg, mem?
             i.op(self, arg)

@@ -1,4 +1,6 @@
-from abc import ABC, ABCMeta, abstractmethod, abstractproperty
+from abc import ABC, abstractmethod
+from typing import Callable
+
 
 class Reg():
     # TODO: move into cpu
@@ -12,18 +14,17 @@ class Reg():
         # Registers
         self.PC = 0
         self.SP = 0
-        #self._HL = bytearray(2)
         self.H = 0
         self.L = 0
         # Flags
-        self.fZ:bool = True
-        self.fN:bool = False
-        self.fH:bool = False
-        self.fC:bool = False
+        self.fZ = True
+        self.fN = False
+        self.fH = False
+        self.fC = False
         # internal flags
-        self.HALT:bool = False
-        self.STOP:bool = False
-        self.IME:bool = False
+        self.HALT = False
+        self.STOP = False
+        self.IME = False
         # extra
         self.ei = 0
 
@@ -82,11 +83,11 @@ class Reg():
     def __str__(self) -> str:
         return f"A:{self.A:02X} F:{self.strF} BC:{self.BC:04X} DE:{self.DE:04X} HL:{self.HL:04X} SP:{self.SP:04X} PC:{self.PC:04X}"
 
-from typing import Callable
 
 class Register(ABC):
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def value(self) -> int:
         pass
 
@@ -108,6 +109,7 @@ class HandlerProxy(Register):
     @value.setter
     def value(self, val: int) -> None:
         self._handler(val)
+
 
 class LCDC(Register):
     def __init__(self) -> None:
@@ -139,6 +141,7 @@ class LCDC(Register):
         self.sprite_enable      = bool(val & 0b00000010)  # 1
         self.bg_enable          = bool(val & 0b00000001)  # 0
 
+
 class STAT(Register):
     def __init__(self) -> None:
         super().__init__()
@@ -165,6 +168,7 @@ class STAT(Register):
         self.lyc_eq_ly            = bool(val & 0b00000100)  # 2
         self.mode                 = bool(val & 0b00000011)  # 0-1
 
+
 class DIV(Register):
     def __init__(self) -> None:
         super().__init__()
@@ -181,6 +185,7 @@ class DIV(Register):
     def value(self, val: int) -> None:
         # Any write to DIV resets it
         self._value = 0x00
+
 
 class TIMA(Register):
     def __init__(self) -> None:

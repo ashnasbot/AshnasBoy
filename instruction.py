@@ -1,8 +1,7 @@
 from __future__ import annotations
 from operator import setitem
-from enum import Enum
 import re
-from typing import Callable, Type
+from typing import Callable
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
